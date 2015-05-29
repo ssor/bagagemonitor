@@ -14,10 +14,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
+/*
+	CGO_ENABLED=0 GOOS=windows GOARCH=386 go build main.go
+*/
 /*
 	需要考虑的大量数据的问题：
 	1. 海量位置信息及其它信息的管理
@@ -27,6 +31,10 @@ import (
 	5. 大量订单的状态刷新问题，中间件
 	6. 位置刷新的时间间隔的设定，应该根据接近目的地而间隔变小
 */
+const (
+	DEFAULT_REFRESH_INTERVAL = 30 * time.Second
+)
+
 var (
 	token                                            = "nodewebgis" //微信接口
 	localhost                                        = "http://localhost/"
@@ -35,13 +43,15 @@ var (
 	G_bagageInfos                                    = bagageInfoList{}
 	G_CarMapImageInfoList                            = CarMapImageInfoList{}
 	G_iniconf                 config.ConfigContainer = nil
-	G_MapImageRefreshInterval                        = 30 * time.Second //刷新位置
+	G_MapImageRefreshInterval                        = DEFAULT_REFRESH_INTERVAL //刷新位置
 )
 
 func init() {
 	initConfig()
 	go startIntervalCheck(G_MapImageRefreshInterval)
-	// removeExpiredImage()
+	// requestBagageInfoList()
+	// refreshBagagePosImage()
+
 }
 func initConfig() {
 	var err error
@@ -55,6 +65,15 @@ func initConfig() {
 		}
 		localhost = fmt.Sprintf("http://%s/", localip)
 		DebugInfoF("本地网络：%s", localhost)
+		imageDirPath = localhost + "images/"
+
+		checkinterval := G_iniconf.String("checkinterval")
+		if i, err := strconv.Atoi(checkinterval); err != nil {
+			G_MapImageRefreshInterval = DEFAULT_REFRESH_INTERVAL
+		} else {
+			G_MapImageRefreshInterval = time.Duration(i) * time.Second
+		}
+		DebugInfoF("更新时间间隔：%d", G_MapImageRefreshInterval)
 
 	}
 }
@@ -79,6 +98,9 @@ func removeExpiredImage() {
 			return err
 		}
 		if strings.HasPrefix(info.Name(), ".") == true {
+			return nil
+		}
+		if info.Name() == "error.png" || info.Name() == "rt.png" {
 			return nil
 		}
 		if info.IsDir() == false {
