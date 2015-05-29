@@ -25,17 +25,17 @@ import (
 	3. 图片文件的管理问题
 	4. 图片的静态服务
 	5. 大量订单的状态刷新问题，中间件
+	6. 位置刷新的时间间隔的设定，应该根据接近目的地而间隔变小
 */
 var (
-	localhost                                    = "http://localhost/"
-	imageDirPath                                 = localhost + "images/"
-	bagageStatusUrl                              = "http://111.67.197.251:9002/getBagageStatus" //post
-	G_bagageInfos                                = bagageInfoList{}
-	token                                        = "nodewebgis"
-	G_CarMapImageInfoList                        = CarMapImageInfoList{}
-	G_iniconf             config.ConfigContainer = nil
-
-	// G_mapImageInfos = mapImageInfoList{}
+	token                                            = "nodewebgis" //微信接口
+	localhost                                        = "http://localhost/"
+	imageDirPath                                     = localhost + "images/"
+	bagageStatusUrl                                  = "http://111.67.197.251:9002/getBagageStatus" //post，获取单号信息，获取的是与该单号绑定的车的位置信息
+	G_bagageInfos                                    = bagageInfoList{}
+	G_CarMapImageInfoList                            = CarMapImageInfoList{}
+	G_iniconf                 config.ConfigContainer = nil
+	G_MapImageRefreshInterval                        = 30 * time.Second //刷新位置
 )
 
 func init() {
@@ -132,7 +132,7 @@ func bagageInfoRequest(bagageID string) {
 	} else {
 		(&bpi).BagageID = bagageID
 		DebugTrace(bpi.String())
-		if imageName, err := G_CarMapImageInfoList.HasImageTemp(bagageID); err != nil {
+		if imageName, err := G_CarMapImageInfoList.HasImageTemp(bagageID, bpi.SogouLongitude, bpi.SogouLatitude); err != nil {
 			downloadMap(&bpi)
 		} else {
 			DebugTraceF("快递 %s 地图位置有缓存 %s", bagageID, imageName)
@@ -155,7 +155,7 @@ func downloadMap(bpi *bagagePosInfo) {
 		case result := <-waitor:
 			if result == true {
 				DebugInfoF("车辆 %s 位置地图下载完成", bpi.CarID)
-				G_CarMapImageInfoList = G_CarMapImageInfoList.Add(NewCarMapImageInfo(bpi.CarID, imageName, uid))
+				G_CarMapImageInfoList = G_CarMapImageInfoList.Add(NewCarMapImageInfo(bpi.CarID, imageName, bpi.SogouLongitude, bpi.SogouLatitude))
 			} else {
 				DebugSysF("车辆 %s 位置地图下载失败", bpi.CarID)
 			}
