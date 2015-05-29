@@ -40,6 +40,7 @@ var (
 
 func init() {
 	initConfig()
+	go startIntervalCheck(G_MapImageRefreshInterval)
 	// removeExpiredImage()
 }
 func initConfig() {
