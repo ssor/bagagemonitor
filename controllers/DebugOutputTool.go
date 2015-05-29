@@ -3,7 +3,7 @@ package controllers
 import (
 	"fmt"
 	"github.com/astaxie/beego"
-	"github.com/fatih/color"
+	// "github.com/fatih/color"
 	"runtime"
 	"strings"
 )
@@ -48,7 +48,8 @@ type IPrintList interface {
 var DebugLevel int = 4
 
 var userBeego = true
-var useColor = false
+
+// var useColor = false
 
 var G_printLog = true
 var G_DebugLine = "-------------------------------------------------------------------------------------------------"
@@ -123,8 +124,6 @@ func DebugOutput(log string, level int) {
 	if level <= DebugLevel {
 		if userBeego == true {
 			DebugOutputBeego(log, level)
-		} else if useColor == true {
-			DebugOutputColor(log, level)
 		} else {
 			prefix := ""
 			switch level {
@@ -142,18 +141,19 @@ func DebugOutput(log string, level int) {
 		}
 	}
 }
-func DebugOutputColor(log string, level int) {
-	switch level {
-	case 1:
-		color.Red(log)
-	case 2:
-		color.Yellow(log)
-	case 3:
-		color.Green(log)
-	case 4:
-		color.Blue(log)
-	}
-}
+
+// func DebugOutputColor(log string, level int) {
+// 	switch level {
+// 	case 1:
+// 		color.Red(log)
+// 	case 2:
+// 		color.Yellow(log)
+// 	case 3:
+// 		color.Green(log)
+// 	case 4:
+// 		color.Blue(log)
+// 	}
+// }
 func DebugOutputBeego(log string, level int) {
 	switch level {
 	case 1:
