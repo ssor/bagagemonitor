@@ -49,43 +49,6 @@ var (
 	g_imageNamesExpired                        = ImageInfoList{} //注册为过期的图片，可以删除
 )
 
-type ImageInfo struct {
-	Name    string
-	Deleted bool
-}
-
-func (this *ImageInfo) SetDeleted() {
-	this.Deleted = true
-}
-
-type ImageInfoList []*ImageInfo
-
-func (this ImageInfoList) Contains(name string) bool {
-	return this.Find(name) != nil
-}
-func (this ImageInfoList) Find(name string) *ImageInfo {
-	for _, ii := range this {
-		if ii.Name == name {
-			return ii
-		}
-	}
-	return nil
-}
-func (this ImageInfoList) RegisterImage(name string) ImageInfoList {
-	if this.Contains(name) {
-		return this
-	}
-	return append(this, &ImageInfo{name, false})
-}
-func (this ImageInfoList) Clear() (list ImageInfoList) {
-	for _, ii := range this {
-		if ii.Deleted == false {
-			list = append(list, ii)
-		}
-	}
-	return
-}
-
 func init() {
 	initConfig()
 	go startIntervalCheck(5 * time.Second)
@@ -131,22 +94,25 @@ func removeExpiredImage() {
 }
 
 //下载地图
+// 百度地图API：http://api.map.baidu.com/staticimage?center=116.403874,39.914888&width=300&height=200&zoom=11
 // 搜狗地图API：http://api.go2map.com/engine/api/static/image+{'points':'116.36620044708252,39.96220463653672',height:'450','width':550,'zoom':9,'center':'116.36620044708252,39.96220463653672',labels:'搜狐网络大厦',pss:'S1756',city:'北京'}.png
 func downloadMap(bpi *BagagePosInfo) (downloadImageName string, result bool) {
 	uid := time.Now().UnixNano()
 	imageName := fmt.Sprintf("%s_%d.png", bpi.Flag, uid) //使用车辆编号，当不同的快递在同一辆车上时可以复用
 	DebugTraceF("保存的图片名称：%s", imageName)
-	url := fmt.Sprintf("http://api.go2map.com/engine/api/static/image+{'points':'%s,%s',height:'341','width':512,'zoom':11,'center':'%s,%s',labels:'%s',pss:'S1756'}.png",
-		bpi.SogouLongitude, bpi.SogouLatitude, bpi.SogouLongitude, bpi.SogouLatitude, "")
+	url := fmt.Sprintf("http://api.map.baidu.com/staticimage?width=512&height=341&center=%s,%s&zoom=13&markers=%s,%s&markerStyles=l,%s",
+		bpi.Longitude, bpi.Latitude, bpi.Longitude, bpi.Latitude, "")
+	// url := fmt.Sprintf("http://api.go2map.com/engine/api/static/image+{'points':'%s,%s',height:'341','width':512,'zoom':11,'center':'%s,%s',labels:'%s',pss:'S1756'}.png",
+	// 	bpi.Longitude, bpi.Latitude, bpi.Longitude, bpi.Latitude, "")
 	DebugTraceF("获取快递最新位置地图链接：%s", url)
-	if err := DownloadFromUrl(url, "static/img/"+imageName); err != nil {
+	if err := downloadFromUrl(url, "static/img/"+imageName); err != nil {
 		DebugMustF("下载 %s 的位置地图出错：%s", bpi.BagageID, err)
 		return "", false
 	} else {
 		return imageName, true
 	}
 }
-func DownloadFromUrl(url, fileName string) error {
+func downloadFromUrl(url, fileName string) error {
 	rawURL := url
 	file, err := os.Create(fileName)
 
@@ -306,7 +272,7 @@ func downloadBagageImage(bagages BagagePosInfoList) {
 					g_bagages = append(g_bagages, bpi)
 				} else {
 					g_imageNamesExpired = g_imageNamesExpired.RegisterImage(bi.ImageName) //将之前使用的图片注册到可删除列表
-					bi.update(bpi.TimeStamp, bpi.SogouLongitude, bpi.SogouLatitude, bpi.ImageName, bpi.Flag)
+					bi.update(bpi.TimeStamp, bpi.Longitude, bpi.Latitude, bpi.ImageName, bpi.Flag)
 				}
 				return
 			} else {

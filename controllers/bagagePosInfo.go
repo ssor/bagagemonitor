@@ -13,31 +13,31 @@ import (
 
 //订单的位置信息
 type BagagePosInfo struct {
-	BagageID       string
-	TimeStamp      string
-	SogouLongitude string
-	SogouLatitude  string
-	Flag           string //放置在位置图上的文字标识
-	ImageName      string //下载的位置图片
+	BagageID  string
+	TimeStamp string
+	Longitude string
+	Latitude  string
+	Flag      string //放置在位置图上的文字标识
+	ImageName string //下载的位置图片
 }
 
 func NewBagagePosInfo(bagageID, timeStamp, lon, lat, flag string) *BagagePosInfo {
 	return &BagagePosInfo{
-		BagageID:       bagageID,
-		TimeStamp:      timeStamp,
-		Flag:           flag,
-		SogouLongitude: lon,
-		SogouLatitude:  lat,
+		BagageID:  bagageID,
+		TimeStamp: timeStamp,
+		Flag:      flag,
+		Longitude: lon,
+		Latitude:  lat,
 	}
 }
 func (this *BagagePosInfo) String() string {
 	return fmt.Sprintf("Flag: %10s  BagageID:%10s   time: %10s     Position:(%6s, %6s)  Image: %s",
-		this.Flag, this.BagageID, this.TimeStamp, this.SogouLongitude, this.SogouLatitude, this.ImageName)
+		this.Flag, this.BagageID, this.TimeStamp, this.Longitude, this.Latitude, this.ImageName)
 }
 func (this *BagagePosInfo) update(timeStamp, lon, lat, imageName, flag string) {
 	this.TimeStamp = timeStamp
-	this.SogouLongitude = lon
-	this.SogouLatitude = lat
+	this.Longitude = lon
+	this.Latitude = lat
 	this.ImageName = imageName
 }
 
@@ -74,7 +74,7 @@ func (this BagagePosInfoList) BagageInfoRepeat(bpi *BagagePosInfo) bool {
 	bi := this.Find(bpi.BagageID)
 	if bi == nil {
 		return false
-	} else if bi.SogouLatitude == bpi.SogouLatitude && bi.SogouLongitude == bpi.SogouLongitude {
+	} else if bi.Latitude == bpi.Latitude && bi.Longitude == bpi.Longitude {
 		return true
 	}
 	return false
