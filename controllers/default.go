@@ -12,7 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	// "path/filepath"
 	"sort"
 	// "strconv"
 	"strings"
@@ -41,25 +41,54 @@ const (
 )
 
 var (
-	token                               = "nodewebgis" //微信接口
-	localhost                           = "http://localhost/"
-	imageDirPath                        = localhost + "images/"
-	G_iniconf    config.ConfigContainer = nil
-	g_bagages                           = BagagePosInfoList{}
-	// bagageStatusUrl                                  = "http://111.67.197.251:9002/getBagageStatus" //post，获取单号信息，获取的是与该单号绑定的车的位置信息
-	// G_bagageInfos                                    = bagageInfoList{}
-	// G_CarMapImageInfoList                            = CarMapImageInfoList{}
-	// G_MapImageRefreshInterval                        = DEFAULT_REFRESH_INTERVAL //刷新位置
+	token                                      = "nodewebgis" //微信接口
+	localhost                                  = "http://localhost/"
+	imageDirPath                               = localhost + "images/"
+	G_iniconf           config.ConfigContainer = nil
+	g_bagages                                  = BagagePosInfoList{}
+	g_imageNamesExpired                        = ImageInfoList{} //注册为过期的图片，可以删除
 )
 
+type ImageInfo struct {
+	Name    string
+	Deleted bool
+}
+
+func (this *ImageInfo) SetDeleted() {
+	this.Deleted = true
+}
+
+type ImageInfoList []*ImageInfo
+
+func (this ImageInfoList) Contains(name string) bool {
+	return this.Find(name) != nil
+}
+func (this ImageInfoList) Find(name string) *ImageInfo {
+	for _, ii := range this {
+		if ii.Name == name {
+			return ii
+		}
+	}
+	return nil
+}
+func (this ImageInfoList) RegisterImage(name string) ImageInfoList {
+	if this.Contains(name) {
+		return this
+	}
+	return append(this, &ImageInfo{name, false})
+}
+func (this ImageInfoList) Clear() (list ImageInfoList) {
+	for _, ii := range this {
+		if ii.Deleted == false {
+			list = append(list, ii)
+		}
+	}
+	return
+}
+
 func init() {
-	// DebugPrintList_Trace(g_bagages)
 	initConfig()
 	go startIntervalCheck(5 * time.Second)
-	// g_bagages = append(g_bagages, NewBagagePosInfo("b001", "12:12:12", "", "111", "222"))
-	// requestBagageInfoList()
-	// refreshBagagePosImage()
-
 }
 func initConfig() {
 	var err error
@@ -81,8 +110,6 @@ func startIntervalCheck(interval time.Duration) {
 	for {
 		select {
 		case <-ticker:
-			// requestBagageInfoList()
-			// refreshBagagePosImage()
 			removeExpiredImage()
 		}
 	}
@@ -91,76 +118,17 @@ func startIntervalCheck(interval time.Duration) {
 //移除过期不用的图片
 func removeExpiredImage() {
 	ImageDirPath := "static/img/"
-	fileNameList := []string{}
-	walkFn := func(fullPath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if strings.HasPrefix(info.Name(), ".") == true {
-			return nil
-		}
-		if info.Name() == "error.png" || info.Name() == "rt.png" {
-			return nil
-		}
-		if info.IsDir() == false {
-			fileNameList = append(fileNameList, info.Name())
-		}
-		return nil
-	}
-	if err := filepath.Walk(ImageDirPath, walkFn); err != nil {
-		DebugSysF(err.Error())
-		return
-	}
-	// sort.Strings(fileNameList)
-	// fmt.Println(fileNameList)
-	for _, name := range fileNameList {
-		if g_bagages.UsingImage(name) == false {
-			if err := os.Remove(ImageDirPath + name); err != nil {
-				DebugSysF("删除过期图片时出错：%s", err.Error())
-			} else {
-				DebugTraceF("删除过期图片：%s", name)
-			}
+	for _, ii := range g_imageNamesExpired {
+		if err := os.Remove(ImageDirPath + ii.Name); err != nil {
+			DebugSysF("删除过期图片时出错：%s", err.Error())
+		} else {
+			DebugTraceF("删除过期图片：%s", ii.Name)
+			ii.SetDeleted()
 		}
 	}
+	g_imageNamesExpired = g_imageNamesExpired.Clear()
+	return
 }
-
-// //根据车辆绑定信息，获取订单的位置信息
-// func refreshBagagePosImage() {
-// 	for _, bi := range G_bagageInfos {
-// 		time.Sleep(1 * time.Second)
-// 		go bagageInfoRequest(bi.BagageID)
-// 	}
-// }
-
-// //获取指定订单的位置状态信息，并转化成地图
-// func bagageInfoRequest(bagageID string) {
-// 	content := fmt.Sprintf(`{"bagageID":"%s"}`, bagageID)
-// 	resp, body, errs := gorequest.New().Post(bagageStatusUrl).Send(content).End()
-// 	if errs != nil {
-// 		for _, _err := range errs {
-// 			DebugSysF("请求单号信息时出错：%s", _err.Error())
-// 		}
-// 		return
-// 	}
-// 	DebugTraceF("查询单号 %s 状态 结果状态：%s", bagageID, resp.Status)
-// 	DebugTraceF(body)
-// 	if len(strings.TrimSpace(string(body))) <= 0 {
-// 		return
-// 	}
-// 	var bpi BagagePosInfo
-// 	if err := json.Unmarshal([]byte(body), &bpi); err != nil {
-// 		DebugSysF(err.Error())
-// 		return
-// 	} else {
-// 		(&bpi).BagageID = bagageID
-// 		DebugTrace(bpi.String())
-// 		if imageName, err := G_CarMapImageInfoList.HasImageTemp(bagageID, bpi.SogouLongitude, bpi.SogouLatitude); err != nil {
-// 			downloadMap(&bpi)
-// 		} else {
-// 			DebugTraceF("快递 %s 地图位置有缓存 %s", bagageID, imageName)
-// 		}
-// 	}
-// }
 
 //下载地图
 // 搜狗地图API：http://api.go2map.com/engine/api/static/image+{'points':'116.36620044708252,39.96220463653672',height:'450','width':550,'zoom':9,'center':'116.36620044708252,39.96220463653672',labels:'搜狐网络大厦',pss:'S1756',city:'北京'}.png
@@ -218,87 +186,6 @@ func DownloadFromUrl(url, fileName string) error {
 	// fmt.Printf("%s,%s,%v", resp.Status, rawURL, size)
 	// fmt.Println()
 }
-
-// func DownloadFromUrl(filePath, url string, chanDownloadCount chan bool) {
-// 	// fileTempPath := "./tmp/"
-// 	//如果路径中包含文件夹，需要首先建立该文件夹
-// 	// fileName := path.Base(url)
-// 	// file, err := os.OpenFile(fileTempPath+fileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-// 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-// 	if err != nil {
-// 		DebugSysF(err.Error())
-// 		chanDownloadCount <- false
-// 		return
-// 	}
-// 	fileDl, err := downloader.NewFileDl(url, file, -1)
-// 	if err != nil {
-// 		DebugSysF("下载 [%s] 出错：%s  url: %s", filePath, err.Error(), url)
-// 		os.Remove(filePath)
-// 		chanDownloadCount <- false
-// 		return
-// 	}
-// 	var chanExit = make(chan bool)
-// 	var chanProgress = make(chan bool)
-// 	var chanAbort = make(chan bool)
-// 	fileDl.OnStart(func() {
-// 		// fmt.Println("开始下载")
-// 		for {
-// 			select {
-// 			case <-chanExit:
-// 				status := fileDl.GetStatus()
-// 				// fmt.Println(fmt.Sprintf(format, status.Downloaded, fileDl.Size, h, 0, "[FINISH]"))
-// 				DebugTraceF("[%s] 下载完成，共 %d 字节", filePath, status.Downloaded)
-// 				// DebugTrace("关闭文件"+GetFileLocation())
-// 				file.Close()
-// 				chanDownloadCount <- true
-// 				return
-// 			case <-chanAbort:
-// 				i := 0
-// 				for {
-// 					if err := file.Close(); err == nil {
-// 						DebugInfo("下载取消成功，关闭了文件 [" + filePath + "]" + GetFileLocation())
-// 						break
-// 					}
-// 					time.Sleep(time.Second * 1)
-// 					i++
-// 					if i > 3 {
-// 						DebugMust("下载取消失败，无法关闭文件 [" + filePath + "]" + GetFileLocation())
-// 						break
-// 					}
-// 				}
-// 				chanDownloadCount <- false
-// 				return
-// 			case <-chanProgress:
-// 				// format := "\033[2K\r%v/%v [%s] (当前速度： %v byte/s) %v"
-// 				// status := fileDl.GetStatus()
-// 				// var i = float64(status.Downloaded) / float64(fileDl.Size) * 50
-// 				// if i < 0 {
-// 				// 	i = 0
-// 				// }
-// 				// h := strings.Repeat("=", int(i)) + strings.Repeat(" ", 50-int(i))
-
-// 				// fmt.Println(fmt.Sprintf(format, status.Downloaded, fileDl.Size, h, status.Speeds, "[DOWNLOADING]"))
-// 			}
-// 		}
-// 	})
-// 	fileDl.OnAbort(func() {
-// 		chanAbort <- true
-// 	})
-// 	fileDl.OnProgress(func() {
-// 		chanProgress <- true
-// 	})
-// 	fileDl.OnFinish(func() {
-// 		chanExit <- true
-// 	})
-
-// 	fileDl.OnError(func(errCode int, err error) {
-// 		fmt.Println(errCode, err)
-// 	})
-
-// 	DebugTraceF("开始下载 url: %s", url)
-// 	fileDl.Start()
-// 	// return fileDl, nil
-// }
 
 type MainController struct {
 	beego.Controller
@@ -418,6 +305,7 @@ func downloadBagageImage(bagages BagagePosInfoList) {
 				if bi == nil {
 					g_bagages = append(g_bagages, bpi)
 				} else {
+					g_imageNamesExpired = g_imageNamesExpired.RegisterImage(bi.ImageName) //将之前使用的图片注册到可删除列表
 					bi.update(bpi.TimeStamp, bpi.SogouLongitude, bpi.SogouLatitude, bpi.ImageName, bpi.Flag)
 				}
 				return
@@ -446,7 +334,6 @@ func (this *MainController) AddBagage() {
 			DebugPrintList_Trace(list)
 			downloadBagageImage(list)
 		}
-		// this.CustomAbort(http.StatusOK, "")
 		this.ServeJson()
 	}
 }
