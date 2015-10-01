@@ -2,10 +2,9 @@ package controllers
 
 import (
 	"encoding/json"
-	"encoding/xml"
+	"errors"
 	"github.com/astaxie/beego/config"
 	// "errors"
-	"crypto/sha1"
 	"fmt"
 	"github.com/astaxie/beego"
 	// "github.com/parnurzeal/gorequest"
@@ -13,15 +12,14 @@ import (
 	"net/http"
 	"os"
 	// "path/filepath"
-	"sort"
 	// "strconv"
-	"strings"
+	"github.com/ungerik/go-dry"
 	"time"
 )
 
 /*
 	编译命令：
-	CGO_ENABLED=0 GOOS=windows GOARCH=386 go build main.go
+	GOOS=windows GOARCH=386 go build main.go
 */
 /*
 	运作原理：
@@ -38,20 +36,22 @@ import (
 */
 const (
 	DEFAULT_REFRESH_INTERVAL = 30 * time.Second
+	ImageDirPath             = "static/img/"
+	ImageDirDefaultPath      = "static/img/defaultImages/"
 )
 
 var (
-	token                                      = "nodewebgis" //微信接口
-	localhost                                  = "http://localhost/"
-	imageDirPath                               = localhost + "images/"
-	G_iniconf           config.ConfigContainer = nil
-	g_bagages                                  = BagagePosInfoList{}
-	g_imageNamesExpired                        = ImageInfoList{} //注册为过期的图片，可以删除
+	token                               = "nodewebgis" //微信接口
+	localhost                           = "http://localhost/"
+	imageDirPath                        = localhost + "images/"
+	G_iniconf    config.ConfigContainer = nil
+	g_bagages                           = BagagePosInfoList{}
+	// g_imageNamesExpired                        = ImageInfoList{} //注册为过期的图片，可以删除
 )
 
 func init() {
 	initConfig()
-	go startIntervalCheck(5 * time.Second)
+	go startIntervalCheck(5 * time.Hour)
 }
 func initConfig() {
 	var err error
@@ -78,20 +78,119 @@ func startIntervalCheck(interval time.Duration) {
 	}
 }
 
-//移除过期不用的图片
-func removeExpiredImage() {
-	ImageDirPath := "static/img/"
-	for _, ii := range g_imageNamesExpired {
-		if err := os.Remove(ImageDirPath + ii.Name); err != nil {
-			DebugSysF("删除过期图片时出错：%s", err.Error())
+type MainController struct {
+	beego.Controller
+}
+
+//add bagage pos info
+func (m *MainController) AddBagage() {
+	responseHandler(m, func(m *MainController) (interface{}, error) {
+		body := m.Ctx.Input.CopyBody()
+		list := BagagePosInfoList{}
+		err := json.Unmarshal(body, &list)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("解析传入数据有误：%s", err))
+			// DebugMustF("解析传入数据有误：%s", err)
+			// m.CustomAbort(http.StatusBadRequest, "数据格式有误")
 		} else {
-			DebugTraceF("删除过期图片：%s", ii.Name)
-			ii.SetDeleted()
+			if len(list) > 0 {
+				DebugInfoF("新添加了 %d 个订单", len(list))
+				DebugPrintList_Trace(list)
+				// downloadBagageImage(list)
+				list.forEach(func(b *BagagePosInfo) {
+					if g_bagages.findOne(func(bi *BagagePosInfo) bool { return bi.equals(b) }) == nil {
+						go addBagagePosInfo(b, 15*time.Second) //下载失败15秒后重试
+					}
+				})
+			}
+			return nil, nil
+			// m.ServeJson()
+		}
+	})
+}
+
+//get all bagage
+func (this *MainController) BagageList() {
+	this.Data["json"] = g_bagages
+	this.ServeJson()
+}
+
+// //添加新的订单位置信息后，直接开始下载对应的图片
+// //下载成功，加入到总的订单列表
+// //下载失败，等待N秒后，重新开始
+// func downloadBagageImage(bagages BagagePosInfoList) {
+// 	bagages.forEach(func(b *BagagePosInfo) {
+// 		if g_bagages.findOne(func(bi *BagagePosInfo) bool { return bi.equals(b) }) == nil {
+// 			go addBagagePosInfo(b, 15*time.Second) //下载失败15秒后重试
+// 		}
+// 	})
+// }
+
+func addBagagePosInfo(bpi *BagagePosInfo, interval time.Duration) {
+	for {
+		DebugTraceF("准备下载地图 %s", bpi.BagageID)
+		if imageName, result := downloadMap(bpi); result == true {
+			bpi.ImageName = imageName
+			bi := g_bagages.findOne(func(b *BagagePosInfo) bool { return b.BagageID == bpi.BagageID })
+			if bi == nil {
+				g_bagages = append(g_bagages, bpi)
+			} else {
+				// g_imageNamesExpired = g_imageNamesExpired.RegisterImage(bi.ImageName) //将之前使用的图片注册到可删除列表
+				bi.update(bpi.TimeStamp, bpi.Longitude, bpi.Latitude, bpi.ImageName, bpi.Flag)
+			}
+			return
+		} else {
+			DebugInfoF("下载订单 %s 位置地图出错，%d 秒后重试", bpi.BagageID, interval)
+			time.Sleep(interval)
 		}
 	}
-	g_imageNamesExpired = g_imageNamesExpired.Clear()
-	return
 }
+
+//移除过期不用的图片
+func removeExpiredImage() {
+	if images, err := dry.ListDirFiles(ImageDirPath); err != nil {
+		DebugMustF("removeExpiredImage error: %s", err)
+	} else {
+		// images = filterString(images, func(s string) { return inStringList([]string{"error.png", "rt.png"}, s) })
+		for _, image := range images {
+			if g_bagages.findOne(func(b *BagagePosInfo) bool { return b.ImageName == image }) == nil {
+				if e := os.Remove(ImageDirPath + image); e != nil {
+					DebugSysF("remove image error: %s", e)
+				}
+			}
+		}
+	}
+
+	// ImageDirPath := "static/img/"
+	// for _, ii := range g_imageNamesExpired {
+	// 	if err := os.Remove(ImageDirPath + ii.Name); err != nil {
+	// 		DebugSysF("删除过期图片时出错：%s", err.Error())
+	// 	} else {
+	// 		DebugTraceF("删除过期图片：%s", ii.Name)
+	// 		ii.SetDeleted()
+	// 	}
+	// }
+	// g_imageNamesExpired = g_imageNamesExpired.Clear()
+	// return
+}
+
+// func inStringList(src []string, t string) bool {
+// 	for _, s := range src {
+// 		if s == t {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
+// func filterString(src []string, p func(string) bool) []string {
+// 	l := []string{}
+// 	for _, s := range src {
+// 		if p(s) {
+// 			l = append(l, s)
+// 		}
+// 	}
+// 	return l
+// }
 
 //下载地图
 // 百度地图API：http://api.map.baidu.com/staticimage?center=116.403874,39.914888&width=300&height=200&zoom=11
@@ -153,162 +252,35 @@ func downloadFromUrl(url, fileName string) error {
 	// fmt.Println()
 }
 
-type MainController struct {
-	beego.Controller
-}
+type logicHandler func(m *MainController) (interface{}, error)
 
-//接收订单查询请求，返回地图信息
-func (this *MainController) ReceiveMsg() {
-	body := this.Ctx.Input.CopyBody()
-	// this.Ctx.Request.
-	DebugTraceF("输入：%s", string(body))
-	response := ""
+func responseHandler(m *MainController, handler logicHandler) {
+	response := NewResponseMsg(0)
 	defer func() {
-		DebugTraceF("输出：%s", response)
-		this.Ctx.WriteString(response)
+		m.Data["json"] = response
+		m.ServeJson()
 	}()
-	if msg, err := parseComingInMessage(body); err != nil {
-		DebugSysF("解析接收到的微信消息时发生错误：%s", err.Error())
-		return
+	if value, err := handler(m); err != nil {
+		DebugMustF("error: %s", err.Error())
+		response = NewResponseMsg(1, err.Error())
 	} else {
-		DebugTraceF(msg.String())
-		/*
-			查找快递相应的位置图片，没有则根据情况使用默认图片
-			如果图片下载失败，使用正在查找的图片代替
-		*/
-		bagageID := msg.Content
-		var weixinRes *weixinResponseNews
-		defer func() {
-			if bytes, err := xml.Marshal(weixinRes); err != nil {
-				DebugSysF("序列化返回信息出错：%s", err.Error())
-				return
-			} else {
-				response = string(bytes)
-			}
-		}()
-		//如果没有该单号
-		bagagePosInfo := g_bagages.Find(bagageID)
-		if bagagePosInfo == nil {
-			//构造一个没有单号的返回信息
-			imageUrl := imageDirPath + "error.png"
-			articleList := ArticleList{&Article{NewArticleItem("订单状态查询", "没有该订单信息", imageUrl, imageUrl)}}
-			weixinRes = NewWeixinResponseNews(msg.FromUserName, msg.ToUserName, time.Now().Unix(), articleList)
-			return
-		}
-		if bagagePosInfo.ImageName == "" {
-			// 使用没有地图的默认图片构造返回信息
-			imageUrl := imageDirPath + "rt.png"
-			articleList := ArticleList{&Article{NewArticleItem("订单状态查询", "暂未找到订单的位置", imageUrl, imageUrl)}}
-			weixinRes = NewWeixinResponseNews(msg.FromUserName, msg.ToUserName, time.Now().Unix(), articleList)
-			return
-		}
-		// mapImageInfo := G_CarMapImageInfoList.Find(bagageInfo.CarID)
-		// if mapImageInfo == nil || mapImageInfo.ImageName == "" { //有单号没图片
-		// 	// 使用没有地图的默认图片构造返回信息
-		// 	imageUrl := imageDirPath + "rt.png"
-		// 	articleList := ArticleList{&Article{NewArticleItem("订单状态查询", "暂未找到订单的位置", imageUrl, imageUrl)}}
-		// 	weixinRes = NewWeixinResponseNews(msg.FromUserName, msg.ToUserName, time.Now().Unix(), articleList)
-		// 	return
-		// }
-		//有单号有图片
-		imageUrl := imageDirPath + bagagePosInfo.ImageName
-		articleList := ArticleList{&Article{NewArticleItem("订单状态查询", fmt.Sprintf("单号 %s 最新位置 %s", bagageID, bagagePosInfo.TimeStamp), imageUrl, imageUrl)}}
-		weixinRes = NewWeixinResponseNews(msg.FromUserName, msg.ToUserName, time.Now().Unix(), articleList)
+		response.Data = value
 	}
 }
 
-//解析微信的xml消息
-/*
-<xml>
-	 <ToUserName><![CDATA[toUser]]></ToUserName>
-	 <FromUserName><![CDATA[fromUser]]></FromUserName>
-	 <CreateTime>1348831860</CreateTime>
-	 <MsgType><![CDATA[text]]></MsgType>
-	 <Content><![CDATA[this is a test]]></Content>
-	 <MsgId>1234567890123456</MsgId>
- </xml>
-*/
-func parseComingInMessage(body []byte) (*weixinInputTextMsg, error) {
-	var msg weixinInputTextMsg
-	if err := xml.Unmarshal(body, &msg); err != nil {
-		return nil, err
-	}
-	return &msg, nil
-}
-func (this *MainController) Index() {
-	signature := this.GetString("signature")
-	timestamp := this.GetString("timestamp")
-	nonce := this.GetString("nonce")
-	echostr := this.GetString("echostr")
-	if isLegel(signature, timestamp, nonce, token) == true {
-		// res.send(echostr)
-		this.Ctx.WriteString(echostr)
-	} else {
-		// res.send('')
-		// this.
-		this.Ctx.WriteString("")
-	}
+type ResponseMsg struct {
+	Code    int
+	Message string
+	Data    interface{}
 }
 
-func isLegel(signature, timestamp, nonce, token string) bool {
-	sl := []string{token, timestamp, nonce}
-	sort.Strings(sl)
-	s := sha1.New()
-	io.WriteString(s, strings.Join(sl, ""))
-	return fmt.Sprintf("%x", s.Sum(nil)) == signature
-}
-
-//添加新的订单位置信息后，直接开始下载对应的图片
-//下载成功，加入到总的订单列表
-//下载失败，等待N秒后，重新开始
-func downloadBagageImage(bagages BagagePosInfoList) {
-	f := func(bpi *BagagePosInfo, interval time.Duration) {
-		for {
-			DebugTraceF("准备下载地图 %s", bpi.BagageID)
-			if imageName, result := downloadMap(bpi); result == true {
-				bpi.ImageName = imageName
-				bi := g_bagages.Find(bpi.BagageID)
-				if bi == nil {
-					g_bagages = append(g_bagages, bpi)
-				} else {
-					g_imageNamesExpired = g_imageNamesExpired.RegisterImage(bi.ImageName) //将之前使用的图片注册到可删除列表
-					bi.update(bpi.TimeStamp, bpi.Longitude, bpi.Latitude, bpi.ImageName, bpi.Flag)
-				}
-				return
-			} else {
-				DebugInfoF("下载订单 %s 位置地图出错，%d 秒后重试", bpi.BagageID, interval)
-				time.Sleep(interval)
-			}
-		}
+func NewResponseMsg(code int, msg ...string) *ResponseMsg {
+	message := ""
+	if len(msg) > 0 {
+		message = msg[0]
 	}
-	for _, b := range bagages {
-		if g_bagages.BagageInfoRepeat(b) == false { //重复不需要下载
-			go f(b, 15*time.Second) //下载失败15秒后重试
-		}
+	return &ResponseMsg{
+		Code:    code,
+		Message: message,
 	}
-}
-func (this *MainController) AddBagage() {
-	body := this.Ctx.Input.CopyBody()
-	list := BagagePosInfoList{}
-	err := json.Unmarshal(body, &list)
-	if err != nil {
-		DebugMustF("解析传入数据有误：%s", err)
-		this.CustomAbort(http.StatusBadRequest, "数据格式有误")
-	} else {
-		if len(list) > 0 {
-			DebugInfoF("新添加了 %d 个订单", len(list))
-			DebugPrintList_Trace(list)
-			downloadBagageImage(list)
-		}
-		this.ServeJson()
-	}
-}
-func (this *MainController) BagageList() {
-	this.Data["json"] = g_bagages
-	this.ServeJson()
-}
-func (this *MainController) Get() {
-	this.Data["Website"] = "beego.me"
-	this.Data["Email"] = "astaxie@gmail.com"
-	this.TplNames = "index.tpl"
 }
