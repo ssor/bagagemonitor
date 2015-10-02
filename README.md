@@ -27,14 +27,16 @@
 1. 添加订单位置信息
 
 > POST /addBagage
+
 > 参数:
-	`
-	{ID:"与订单绑定的打包或者车辆信息", Longitude: 39.45, Latitude: 112.45, BagageList: ["001", "002"]}
+
+>>{ID:"与订单绑定的打包或者车辆信息", Longitude: 39.45, Latitude: 112.45, BagageList: ["001", "002"]}
 `
 
 > 返回:
-> `{Code: 0, Message: ""}`
-> Code为0,表示成功
+>
+>> {Code: 0, Message: ""}
+>> Code为0,表示成功
 
 ###待实现特性:
 
