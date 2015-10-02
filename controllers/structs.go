@@ -5,12 +5,20 @@ import (
 	// "fmt"
 )
 
+//传入位置信息时的数据格式
+type Pakage struct {
+	ID         string
+	Longitude  float64
+	Latitude   float64
+	BagageList []string
+}
+
 //订单的位置信息
 type BagagePosInfo struct {
 	BagageID  string
 	TimeStamp string
-	Longitude string
-	Latitude  string
+	Longitude float64
+	Latitude  float64
 	Flag      string //放置在位置图上的文字标识
 	ImageName string //下载的位置图片
 }

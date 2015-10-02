@@ -8,13 +8,14 @@ import (
 	// "github.com/astaxie/beego"
 	// "github.com/parnurzeal/gorequest"
 	// "os"
-	// "time"
+	"time"
 )
 
-func NewBagagePosInfo(bagageID, timeStamp, lon, lat, flag string) *BagagePosInfo {
+func NewBagagePosInfo(bagageID string, lon, lat float64, flag string) *BagagePosInfo {
+	addedTime := time.Now().Format("2006-01-02 15:04:05")
 	return &BagagePosInfo{
 		BagageID:  bagageID,
-		TimeStamp: timeStamp,
+		TimeStamp: addedTime,
 		Flag:      flag,
 		Longitude: lon,
 		Latitude:  lat,
@@ -28,7 +29,7 @@ func (b *BagagePosInfo) equals(bi *BagagePosInfo) bool {
 	return b.Latitude == bi.Latitude && b.Longitude == bi.Longitude
 }
 
-func (this *BagagePosInfo) update(timeStamp, lon, lat, imageName, flag string) {
+func (this *BagagePosInfo) update(timeStamp string, lon, lat float64, imageName, flag string) {
 	this.TimeStamp = timeStamp
 	this.Longitude = lon
 	this.Latitude = lat

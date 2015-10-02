@@ -20,10 +20,9 @@ import (
 /*
 	编译命令：
 	GOOS=windows GOARCH=386 go build main.go
-*/
-/*
+
 	运作原理：
-	* 本系统开放接口，外部系统可以通过接口添加需要监控的订单及其坐标位置（目前只支持搜狗坐标）
+	* 本系统开放接口，外部系统可以通过接口添加需要监控的订单及其坐标位置
 	* 只在更新坐标位置时更新位置图片
 
 	需要考虑的大量数据的问题：
@@ -86,23 +85,27 @@ type MainController struct {
 func (m *MainController) AddBagage() {
 	responseHandler(m, func(m *MainController) (interface{}, error) {
 		body := m.Ctx.Input.CopyBody()
-		list := BagagePosInfoList{}
-		err := json.Unmarshal(body, &list)
+		// list := BagagePosInfoList{}
+		pkg := Pakage{}
+		err := json.Unmarshal(body, &pkg)
 		if err != nil {
 			return nil, errors.New(fmt.Sprintf("解析传入数据有误：%s", err))
 			// DebugMustF("解析传入数据有误：%s", err)
 			// m.CustomAbort(http.StatusBadRequest, "数据格式有误")
 		} else {
-			if len(list) > 0 {
-				DebugInfoF("新添加了 %d 个订单", len(list))
-				DebugPrintList_Trace(list)
-				// downloadBagageImage(list)
-				list.forEach(func(b *BagagePosInfo) {
-					if g_bagages.findOne(func(bi *BagagePosInfo) bool { return bi.equals(b) }) == nil {
-						go addBagagePosInfo(b, 15*time.Second) //下载失败15秒后重试
-					}
-				})
+			for _, bagageID := range pkg.BagageList {
+				go addBagagePosInfo(NewBagagePosInfo(bagageID, pkg.Longitude, pkg.Latitude, ""), 15*time.Second)
 			}
+			// if len(list) > 0 {
+			// 	DebugInfoF("新添加了 %d 个订单", len(list))
+			// 	DebugPrintList_Trace(list)
+			// 	// downloadBagageImage(list)
+			// 	list.forEach(func(b *BagagePosInfo) {
+			// 		if g_bagages.findOne(func(bi *BagagePosInfo) bool { return bi.equals(b) }) == nil {
+			// 			go addBagagePosInfo(b, 15*time.Second) //下载失败15秒后重试
+			// 		}
+			// 	})
+			// }
 			return nil, nil
 			// m.ServeJson()
 		}
