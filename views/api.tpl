@@ -2,7 +2,7 @@
 
 <html>
   	<head>
-    	<title>Beego</title>
+    	<title>订单实时状态查询</title>
     	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 
 		<style type="text/css">
@@ -68,7 +68,20 @@
 			  <div class="hero-text">
 			    <h1>Welcome to Beego!</h1>
 			    <p class="description">
-			    	Beego is a simple & powerful Go web framework which is inspired by tornado and sinatra.
+
+1. 添加订单位置信息
+
+ POST /addBagage
+
+ 参数:
+
+{ID:"与订单绑定的打包或者车辆信息", Longitude: 39.45, Latitude: 112.45, BagageList: ["001", "002"]}
+`
+
+ 返回:
+
+ {Code: 0, Message: ""}
+ Code为0,表示成功
 			    <br />
 			    	Official website: <a href="http://{{.Website}}">{{.Website}}</a>
 			    <br />
