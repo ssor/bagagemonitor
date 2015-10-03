@@ -176,6 +176,9 @@ func removeExpiredImage() {
 	// g_imageNamesExpired = g_imageNamesExpired.Clear()
 	// return
 }
+func (m *MainController) Api() {
+	m.TplNames = "api.tpl"
+}
 
 // func inStringList(src []string, t string) bool {
 // 	for _, s := range src {

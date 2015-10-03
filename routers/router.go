@@ -10,4 +10,5 @@ func init() {
 	beego.Router("/weixin", &controllers.MainController{}, "post:ReceiveMsg")
 	beego.Router("/addBagage", &controllers.MainController{}, "post:AddBagage")
 	beego.Router("/bagageList", &controllers.MainController{}, "get:BagageList")
+	beego.Router("/api", &controllers.MainController{}, "get:Api")
 }
